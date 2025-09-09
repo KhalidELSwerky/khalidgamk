@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>قارئ الباركود</title>
+    <title>قارئ باركود و QR Code</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -59,54 +59,105 @@
 </head>
 <body>
 
-    <button id="scan-button">افتح الكاميرا لمسح الباركود</button>
+    <button id="scan-button">افتح الكاميرا للمسح</button>
 
     <div id="interactive" class="viewport"></div>
+    <video id="videoElement" style="display: none;"></video>
+    <canvas id="canvasElement" style="display: none;"></canvas>
 
     <div id="result">
-        <span id="barcode-value">الرقم هنا</span>
+        <span id="scan-value">الرقم هنا</span>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
-    <script>
-        document.getElementById('scan-button').addEventListener('click', function() {
-            // إخفاء الزر بعد الضغط عليه
-            this.style.display = 'none';
-            // إظهار منطقة الكاميرا
-            document.getElementById('interactive').style.display = 'block';
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
-            Quagga.init({
-                inputStream : {
-                    name : "Live",
-                    type : "LiveStream",
-                    target: document.querySelector('#interactive')
+    <script>
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('canvasElement');
+        const context = canvas.getContext('2d');
+        const interactiveDiv = document.getElementById('interactive');
+        const resultSpan = document.getElementById('scan-value');
+        const scanButton = document.getElementById('scan-button');
+
+        let isScanning = false;
+
+        scanButton.addEventListener('click', async () => {
+            if (isScanning) return;
+            isScanning = true;
+            scanButton.style.display = 'none';
+            interactiveDiv.style.display = 'block';
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                video.srcObject = stream;
+                video.play();
+                interactiveDiv.appendChild(video);
+
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    scanLoop();
+                };
+
+            } catch (err) {
+                console.error("Error accessing camera: ", err);
+                alert("عذراً، لم نتمكن من الوصول إلى الكاميرا.");
+                isScanning = false;
+                interactiveDiv.style.display = 'none';
+                scanButton.style.display = 'block';
+            }
+        });
+
+        function scanLoop() {
+            if (!isScanning) return;
+
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+
+            // 1. محاولة قراءة QR Code أولاً
+            const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+            if (qrCode) {
+                handleScanResult((QR Code) ${qrCode.data});
+                return;
+            }
+
+            // 2. إذا لم يكن QR Code، نحاول قراءة باركود
+            Quagga.decodeSingle({
+                src: canvas.toDataURL(),
+                locate: true,
+                inputStream: {
+                    size: 800
                 },
                 decoder: {
-                    readers: ["ean_reader", "code_128_reader"]
+                    readers: [
+                        "code_128_reader", "ean_reader", "ean_8_reader", "upc_reader",
+                        "upc_e_reader", "code_39_reader", "code_39_vin_reader",
+                        "codabar_reader", "i2of5_reader"
+                    ]
                 }
-            }, function(err) {
-                if (err) {
-                    console.error(err);
-                    alert("عذراً، لم نتمكن من الوصول إلى الكاميرا. يرجى التأكد من صلاحية الوصول.");
-                    return;
+            }, function(result) {
+                if (result && result.codeResult) {
+                    handleScanResult((Barcode) ${result.codeResult.code});
+                } else {
+                    requestAnimationFrame(scanLoop);
                 }
-                Quagga.start();
             });
+        }
 
-            Quagga.onDetected(function(result) {
-                let code = result.codeResult.code;
-                document.getElementById('barcode-value').textContent = code;
-                
-                // يمكنك هنا إضافة الكود الخاص بإرسال البيانات إلى الخادم
-                // مثلا: sendDataToServer(code);
+        function handleScanResult(data) {
+            resultSpan.textContent = data;
+            console.log("Scan detected:", data);
 
-                // إيقاف تشغيل الكاميرا بعد أول باركود
-                Quagga.stop();
-                document.getElementById('interactive').style.display = 'none';
-                document.getElementById('scan-button').style.display = 'block';
-            });
-        });
+            // إيقاف الكاميرا
+            video.srcObject.getTracks().forEach(track => track.stop());
+            interactiveDiv.style.display = 'none';
+            isScanning = false;
+            scanButton.style.display = 'block';
+        }
+
+        // إخفاء الـ div التفاعلي عند بداية التحميل
+        interactiveDiv.style.display = 'none';
     </script>
-
 </body>
 </html>
