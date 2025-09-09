@@ -110,40 +110,43 @@
         });
 
         function scanLoop() {
-            if (!isScanning) return;
+    if (!isScanning) return;
 
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
-            // 1. محاولة قراءة QR Code أولاً
-            const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
-            if (qrCode) {
-                handleScanResult((QR Code) ${qrCode.data});
-                return;
-            }
+    // Try to decode QR Code first
+    const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+    if (qrCode) {
+        handleScanResult(`(QR Code) ${qrCode.data}`);
+        return;
+    }
 
-            // 2. إذا لم يكن QR Code، نحاول قراءة باركود
-            Quagga.decodeSingle({
-                src: canvas.toDataURL(),
-                locate: true,
-                inputStream: {
-                    size: 800
-                },
-                decoder: {
-                    readers: [
-                        "code_128_reader", "ean_reader", "ean_8_reader", "upc_reader",
-                        "upc_e_reader", "code_39_reader", "code_39_vin_reader",
-                        "codabar_reader", "i2of5_reader"
-                    ]
-                }
-            }, function(result) {
-                if (result && result.codeResult) {
-                    handleScanResult((Barcode) ${result.codeResult.code});
-                } else {
-                    requestAnimationFrame(scanLoop);
-                }
-            });
+    // If not a QR Code, try to decode a barcode
+    Quagga.decodeSingle({
+        src: canvas.toDataURL(),
+        locate: true,
+        inputStream: {
+            size: 800
+        },
+        decoder: {
+            readers: [
+                "code_128_reader", "ean_reader", "ean_8_reader", "upc_reader",
+                "upc_e_reader", "code_39_reader", "code_39_vin_reader",
+                "codabar_reader", "i2of5_reader"
+            ]
         }
+    }, function(result) {
+        if (result && result.codeResult) {
+            handleScanResult(`(Barcode) ${result.codeResult.code}`);
+        } else {
+            requestAnimationFrame(scanLoop);
+       }
+     });
+}
+
+
+
 
         function handleScanResult(data) {
             resultSpan.textContent = data;
